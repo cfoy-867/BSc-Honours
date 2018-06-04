@@ -1,0 +1,1130 @@
+---
+title: "extracting for missing sizes"
+author: "Chrystal Foy"
+date: "January 2018"
+output: word_document
+---
+
+# Importing excel file
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Import excel file with multiple sheets
+install.packages("readxl")
+library("readxl")
+
+missing2012 <- read_excel("missingsizes.xlsx", sheet = 1)
+missing2013 <- read_excel("missingsizes.xlsx", sheet = 2)
+missing2014 <- read_excel("missingsizes.xlsx", sheet = 3)
+missing2015 <- read_excel("missingsizes.xlsx", sheet = 4)
+missing2016 <- read_excel("missingsizes.xlsx", sheet = 5)
+
+# removing observations with HH-ID as NA = check if any HH had NA
+which(is.na(missing2012$HH))
+which(is.na(missing2013$HH))
+which(is.na(missing2014$HH))
+which(is.na(missing2015$HH))
+which(is.na(missing2016$HH))
+```
+
+###### 2012
+# Extract sizes from product descriptions using regular expressions
+```{r}
+##### TESTING code for 2012 missing data #####
+
+# explore barcode descriptions
+barcode = data.frame(table(missing2012$BARCODE_DESC))
+# after review, if packet sizes were provided, it would appear at the end of the description
+
+# create new variable called "test" with same data as "BARCODE_DESC" barcode description
+missing2012$test = missing2012$BARCODE_DESC
+
+# substring = extract the last 10 characters (as sizes appear near the end of the string)
+missing2012$test = substr(missing2012$test, (nchar(missing2012$test)-9), nchar(missing2012$test))
+
+# explore patterns of the extracted substrings
+testtable = data.frame(table(missing2012$test))
+
+# create new variable called "SIZE_new" and "UNIT_new" all as NA first
+missing2012$SIZE_new = NA
+missing2012$UNIT_new = NA
+```
+
+# Pattern to extract sizes with units "G", "KG" and "ML"
+```{r}
+# create pattern to detect the units "G", "KG", "ML", "L"
+pattern = "^.+[[:space:]](.+[G|(KG)|(ML)|(L)])([[:space:]].+S)*$"
+
+missing2012$SIZE_new = gsub(pattern, "\\1", missing2012$test)
+
+# look at extracted sizes
+extractedtable = data.frame(table(missing2012$SIZE_new))
+
+# convert extracted into numeric values with consistent units "G"
+## DIGIT G unit and size
+missing2012$UNIT_new[which(grepl("^(\\d+)G$", missing2012$SIZE_new) == TRUE)] = "G"
+
+missing2012$SIZE_new[which(grepl("^(\\d+)G$", missing2012$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2012$SIZE_new[which(grepl("^(\\d+)G$", missing2012$SIZE_new) == TRUE)], split="G"))
+
+# 11.5G
+missing2012$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2012$SIZE_new) == TRUE)] = "G"
+
+missing2012$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2012$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2012$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2012$SIZE_new) == TRUE)], split="G"))
+
+# DIGIT KG * 1000 = g
+missing2012$UNIT_new[which(grepl("^(\\d+)KG$", missing2012$SIZE_new) == TRUE)] = "G"
+
+missing2012$SIZE_new[which(grepl("^(\\d+)KG$", missing2012$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2012$SIZE_new[which(grepl("^(\\d+)KG$", missing2012$SIZE_new) == TRUE)], split="KG"))*1000
+
+# DIGIT.DIGIT KG * 1000 = g
+missing2012$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2012$SIZE_new) == TRUE)] = "G"
+
+missing2012$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2012$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2012$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2012$SIZE_new) == TRUE)], split="KG"))*1000
+
+# ML (assume = g) (includes items with reconstituted ML as its UNIT but description has ML)
+# ignores units ML (CN) and ML(PL) and ML(BD) = all reconstituted ML
+missing2012$UNIT_new[which(grepl("^(\\d+)ML$", missing2012$SIZE_new) == TRUE)] = "ML"
+
+missing2012$SIZE_new[which(grepl("^(\\d+)ML$", missing2012$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2012$SIZE_new[which(grepl("^(\\d+)ML$", missing2012$SIZE_new) == TRUE)], split="ML"))
+
+# L (WATER COOLER 2011 1L) * 1000
+missing2012$UNIT_new[which(grepl("^(\\d+)L$", missing2012$SIZE_new) == TRUE)] = "ML"
+
+missing2012$SIZE_new[which(grepl("^(\\d+)L$", missing2012$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2012$SIZE_new[which(grepl("^(\\d+)L$", missing2012$SIZE_new) == TRUE)], split="L"))*1000
+
+# (ORIGINAL JUICE CO GRAPEF 1L) is a reconstituted ML measure so must set back to NA
+missing2012$UNIT_new[which(missing2012$BARCODE_DESC == "ORIGINAL JUICE CO GRAPEF 1L")] = NA
+
+missing2012$SIZE_new[which(missing2012$BARCODE_DESC == "ORIGINAL JUICE CO GRAPEF 1L")] = NA
+
+```
+
+
+# Specific items checked for size
+```{r}
+# "TEA 20X40G" Dilmah tea 40 G net
+missing2012$UNIT_new[which(grepl("20X40G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Tea")] = "G"
+
+missing2012$SIZE_new[which(grepl("20X40G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Tea")] = 40
+
+# "LS 30G 20S" Dilmah tea 30G net
+missing2012$UNIT_new[which(grepl("30G 20S", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Tea")] = "G"
+
+missing2012$SIZE_new[which(grepl("30G 20S", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Tea")] = 30
+
+# "IC 50X420G" Marcel's Blinis 420 G net (assuming as a 24 pack is 200 G)
+missing2012$UNIT_new[which(grepl("50X420G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2012$SIZE_new[which(grepl("50X420G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Other bread")] = 420
+
+# "PIES 8X35G" Nature's Harvest Fruit Mince Pies are 35G/pie
+missing2012$UNIT_new[which(grepl("8X35G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Pastries")] = "G"
+
+missing2012$SIZE_new[which(grepl("8X35G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_3 == "Pastries")] = 8*35
+
+# "ANGE 3X95G" RARO 3 packets x 95G/packet
+missing2012$UNIT_new[which(grepl("3X95G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_2 == "Beverage mixes")] = "G"
+
+missing2012$SIZE_new[which(grepl("3X95G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_2 == "Beverage mixes")] = 3*95
+
+# "ICAL 3X86G" RARO tropical
+missing2012$UNIT_new[which(grepl("3X86G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_2 == "Beverage mixes")] = "G"
+
+missing2012$SIZE_new[which(grepl("3X86G", missing2012$SIZE_new) == TRUE & missing2012$Food_Group_Name_2 == "Beverage mixes")] = 3*86
+```
+
+# MAINLAND CRACKER CUTS with CHEESE
+```{r}
+# Assuming products are 120 g based on "BARCODE_DESC", "SIZE" and searching the internet and finding the product on Fonterra's website
+# For these products only using the following rules:
+# - "SIZE" = 120
+# - "Food Group Name 2 or Code" = "Cheese" or 0501
+missing2012$UNIT_new[which(missing2012$SIZE == 120 & missing2012$Food_Group_Name_2 == "Cheese")] = "G"
+
+missing2012$SIZE_new[which(missing2012$SIZE == 120 & missing2012$Food_Group_Name_2 == "Cheese")] = missing2012$SIZE[which(missing2012$SIZE == 120 & missing2012$Food_Group_Name_2 == "Cheese")]
+```
+
+# Pistachios
+```{r}
+# "2011 50G3" for "PISTACHIO 2011 50G3" unable to be classified (1 PACKS) = frequency of 222 items ???
+missing2012$UNIT_new[which(grepl("2011 50G3", missing2012$SIZE_new) == TRUE)] = "G"
+missing2012$SIZE_new[which(grepl("2011 50G3", missing2012$SIZE_new) == TRUE)] = 50
+```
+
+# Toblerone
+```{r}
+missing2012$UNIT_new[which(grepl("3X200G", missing2012$SIZE_new) == TRUE)] = "G"
+missing2012$SIZE_new[which(grepl("3X200G", missing2012$SIZE_new) == TRUE)] = 600
+```
+
+# Corned beef
+```{r}
+missing2012$UNIT_new[which(grepl("3X330G", missing2012$SIZE_new) == TRUE)] = "G"
+missing2012$SIZE_new[which(grepl("3X330G", missing2012$SIZE_new) == TRUE)] = 990
+```
+
+# Coca cola (4 x 1.5L) and (24 x 355 ml)
+```{r}
+missing2012$UNIT_new[which(grepl("4X1.5L", missing2012$SIZE_new) == TRUE)] = "ML"
+missing2012$SIZE_new[which(grepl("4X1.5L", missing2012$SIZE_new) == TRUE)] = 6000
+
+missing2012$UNIT_new[which(grepl("9300675011983", missing2012$Barcode) == TRUE)] = "ML"
+missing2012$SIZE_new[which(grepl("9300675011983", missing2012$Barcode) == TRUE)] = missing2012$SIZE[which(grepl("9300675011983", missing2012$Barcode) == TRUE)]
+
+missing2012$UNIT_new[which(grepl("9419826471764", missing2012$Barcode) == TRUE)] = "ML"
+missing2012$SIZE_new[which(grepl("9419826471764", missing2012$Barcode) == TRUE)] = missing2012$SIZE[which(grepl("9419826471764", missing2012$Barcode) == TRUE)]
+
+```
+
+# drinks (PL) where UNIT in (ml or g) (NOT reconstituted unit)
+```{r}
+missing2012$UNIT_new[which(grepl("(PL)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = "ML"
+
+missing2012$SIZE_new[which(grepl("(PL)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = missing2012$SIZE[which(grepl("(PL)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")]
+```
+# drinks (BD) = are all in RECONSTITUTED UNITS
+
+# drinks (CN) where UNIT in (ml or g) (NOT reconstituted unit)
+```{r}
+missing2012$UNIT_new[which(grepl("(CN)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = "ML"
+missing2012$SIZE_new[which(grepl("(CN)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = missing2012$SIZE[which(grepl("(CN)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")]
+
+missing2012$UNIT_new[which(grepl("(CN)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "G")] = "G"
+missing2012$SIZE_new[which(grepl("(CN)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "G")] = missing2012$SIZE[which(grepl("(CN)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "G")]
+```
+
+# drinks (GL) where UNIT in (ml or g) (NOT reconstituted unit)
+```{r}
+missing2012$UNIT_new[which(grepl("(GL)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = "ML"
+missing2012$SIZE_new[which(grepl("(GL)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = missing2012$SIZE[which(grepl("(GL)", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")]
+```
+
+# Other
+```{r}
+missing2012$UNIT_new[which(grepl("FRUIT850ML", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = "ML"
+missing2012$SIZE_new[which(grepl("FRUIT850ML", missing2012$SIZE_new) == TRUE & missing2012$UNIT == "ML")] = 850
+```
+
+# Checking remaining "extracted_test"
+```{r}
+extractedtable = data.frame(table(missing2012$SIZE_new))
+
+```
+
+# Some reconstituted liquids with (BD) (CN) and (GL) are not correct sizes = NA
+# Checking and identify "extracted_test" that do not provide sizes
+```{r}
+extractedtable = data.frame(table(missing2012$SIZE_new))
+
+# after review all remaining "extracted_test" levels provide no size therefore = NA
+missing2012$SIZE_new[which(is.na(missing2012$UNIT_new) == TRUE)] = NA
+
+# check levels again
+extractedtable = data.frame(table(missing2012$SIZE_new))
+
+# 70,894 observations still have NA size = 73.43% of missing obs still missing...
+# 70,894/1624714*100 = 4.36% of TOTAL OBS still missing
+sum(is.na(missing2012$SIZE_new))
+sum(is.na(missing2012$UNIT_new))
+
+70894/96542*100
+70894/1624714*100
+
+```
+
+# Export into csv file
+```{r}
+write.csv(missing2012, file = "extract2012.csv")
+```
+
+
+
+
+
+
+###### 2013 missing sizes dataset
+# Extract sizes from product descriptions using regular expressions
+```{r}
+##### 2013 missing data #####
+
+# explore barcode descriptions
+barcode = data.frame(table(missing2013$BARCODE_DESC))
+# after review, if packet sizes were provided, it would appear at the end of the description
+
+# create new variable called "test" with same data as "BARCODE_DESC" barcode description
+missing2013$test = missing2013$BARCODE_DESC
+
+# substring = extract the last 10 characters (as sizes appear near the end of the string)
+missing2013$test = substr(missing2013$test, (nchar(missing2013$test)-9), nchar(missing2013$test))
+
+# explore patterns of the extracted substrings
+testtable = data.frame(table(missing2013$test))
+
+# create new variable called "SIZE_new" and "UNIT_new" all as NA first
+missing2013$SIZE_new = NA
+missing2013$UNIT_new = NA
+```
+
+# Pattern to extract sizes with units "G", "KG" and "ML"
+```{r}
+# create pattern to detect the units "G", "KG", "ML", "L"
+pattern = "^.+[[:space:]](.+[G|(KG)|(ML)|(L)])([[:space:]].+S)*$"
+
+missing2013$SIZE_new = gsub(pattern, "\\1", missing2013$test)
+
+# look at extracted sizes
+extractedtable = data.frame(table(missing2013$SIZE_new))
+
+# convert extracted into numeric values with consistent units "G"
+## DIGIT G unit and size
+missing2013$UNIT_new[which(grepl("^(\\d+)G$", missing2013$SIZE_new) == TRUE)] = "G"
+
+missing2013$SIZE_new[which(grepl("^(\\d+)G$", missing2013$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2013$SIZE_new[which(grepl("^(\\d+)G$", missing2013$SIZE_new) == TRUE)], split="G"))
+
+# 11.5G
+missing2013$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2013$SIZE_new) == TRUE)] = "G"
+
+missing2013$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2013$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2013$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2013$SIZE_new) == TRUE)], split="G"))
+
+# DIGIT KG * 1000 = g
+missing2013$UNIT_new[which(grepl("^(\\d+)KG$", missing2013$SIZE_new) == TRUE)] = "G"
+
+missing2013$SIZE_new[which(grepl("^(\\d+)KG$", missing2013$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2013$SIZE_new[which(grepl("^(\\d+)KG$", missing2013$SIZE_new) == TRUE)], split="KG"))*1000
+
+# DIGIT.DIGIT KG * 1000 = g
+missing2013$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2013$SIZE_new) == TRUE)] = "G"
+
+missing2013$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2013$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2013$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2013$SIZE_new) == TRUE)], split="KG"))*1000
+
+# ML (assume = g) (includes items with reconstituted ML as its UNIT but description has ML)
+# ignores units ML (CN) and ML(PL) and ML(BD) = all reconstituted ML
+missing2013$UNIT_new[which(grepl("^(\\d+)ML$", missing2013$SIZE_new) == TRUE)] = "ML"
+
+missing2013$SIZE_new[which(grepl("^(\\d+)ML$", missing2013$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2013$SIZE_new[which(grepl("^(\\d+)ML$", missing2013$SIZE_new) == TRUE)], split="ML"))
+
+# L (WATER COOLER 2011 1L ??) * 1000
+# also includes reconstituted ML
+missing2013$UNIT_new[which(grepl("^(\\d+)L$", missing2013$SIZE_new) == TRUE)] = "ML"
+
+missing2013$SIZE_new[which(grepl("^(\\d+)L$", missing2013$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2013$SIZE_new[which(grepl("^(\\d+)L$", missing2013$SIZE_new) == TRUE)], split="L"))*1000
+
+```
+
+# Specific items checked for size
+```{r}
+# "TEA 20X40G" Dilmah tea 40 G net
+missing2013$UNIT_new[which(grepl("20X40G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Tea")] = "G"
+
+missing2013$SIZE_new[which(grepl("20X40G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Tea")] = 40
+
+# "LS 30G 20S" Dilmah tea 30G net
+missing2013$UNIT_new[which(grepl("30G 20S", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Tea")] = "G"
+
+missing2013$SIZE_new[which(grepl("30G 20S", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Tea")] = 30
+
+# ORGRAN NAT TOMATO "2X24G" - net 24G
+missing2013$UNIT_new[which(grepl("2X24G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Dry soup mix")] = "G"
+
+missing2013$SIZE_new[which(grepl("2X24G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Dry soup mix")] = 24
+
+# "IC 50X420G" Marcel's Blinis 420 G net (assuming as a 24 pack is 200 G)
+missing2013$UNIT_new[which(grepl("50X420G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2013$SIZE_new[which(grepl("50X420G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Other bread")] = 420
+
+# "PIES 8X35G" Nature's Harvest Fruit Mince Pies are 35G/pie
+missing2013$UNIT_new[which(grepl("8X35G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Pastries")] = "G"
+
+missing2013$SIZE_new[which(grepl("8X35G", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Pastries")] = 8*35
+
+
+# TUNNOCKS CARAMEL LOG 27GM = 27 gram caramel water biscuit logs
+missing2013$UNIT_new[which(grepl("27GM", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Cakes")] = "G"
+
+missing2013$SIZE_new[which(grepl("27GM", missing2013$SIZE_new) == TRUE & missing2013$Food_Group_Name_3 == "Cakes")] = 27
+```
+
+# MAINLAND CRACKER CUTS with CHEESE
+```{r}
+# Assuming products are 120 g based on "BARCODE_DESC", "SIZE" and searching the internet and finding the product on Fonterra's website
+# For these products only using the following rules:
+# - "SIZE" = 120
+# - "Food Group Name 2 or Code" = "Cheese" or 0501
+missing2013$UNIT_new[which(missing2013$SIZE == 120 & missing2013$Food_Group_Name_2 == "Cheese")] = "G"
+
+missing2013$SIZE_new[which(missing2013$SIZE == 120 & missing2013$Food_Group_Name_2 == "Cheese")] = missing2013$SIZE[which(missing2013$SIZE == 120 & missing2013$Food_Group_Name_2 == "Cheese")]
+```
+
+# Pistachios
+```{r}
+# "2011 50G3" for "PISTACHIO 2011 50G3" unable to be classified (1 PACKS) = frequency of 222 items ???
+missing2013$UNIT_new[which(grepl("2011 50G3", missing2013$SIZE_new) == TRUE)] = "G"
+missing2013$SIZE_new[which(grepl("2011 50G3", missing2013$SIZE_new) == TRUE)] = 50
+```
+
+# drinks (CN) where UNIT in (ml or g) (NOT reconstituted unit)
+```{r}
+missing2013$UNIT_new[which(missing2013$Barcode == "9414789301172")] = "G"
+missing2013$SIZE_new[which(grepl("9414789301172", missing2013$Barcode) == TRUE & missing2013$UNIT == "G")] = missing2013$SIZE[which(missing2013$Barcode == "9414789301172")]
+```
+
+# drinks (PL) where UNIT in (ml or g) (NOT reconstituted unit)
+```{r}
+missing2013$UNIT_new[which(grepl("(PL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")] = "ML"
+missing2013$SIZE_new[which(grepl("(PL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")] = missing2013$SIZE[which(grepl("(PL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")]
+
+missing2013$UNIT_new[which(grepl("(PL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "G")] = "G"
+missing2013$SIZE_new[which(grepl("(PL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "G")] = missing2013$SIZE[which(grepl("(PL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "G")]
+```
+
+# drinks (GL) with UNIT in (ml or g)
+```{r}
+missing2013$UNIT_new[which(grepl("(GL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")] = "ML"
+missing2013$SIZE_new[which(grepl("(GL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")] = missing2013$SIZE[which(grepl("(GL)", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")]
+```
+
+# Other
+```{r}
+missing2013$UNIT_new[which(grepl("FRUIT850ML", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")] = "ML"
+missing2013$SIZE_new[which(grepl("FRUIT850ML", missing2013$SIZE_new) == TRUE & missing2013$UNIT == "ML")] = 850
+
+```
+# Checking remaining "extracted_test"
+```{r}
+extractedtable = data.frame(table(missing2013$SIZE_new))
+```
+
+# Some reconstituted liquids with (BD) (CN) and (GL) are not correct sizes = NA
+# Checking and identify "extracted_test" that do not provide sizes
+```{r}
+extractedtable = data.frame(table(missing2013$SIZE_new))
+
+# after review all remaining "extracted_test" levels provide no size therefore = NA
+missing2013$SIZE_new[which(is.na(missing2013$UNIT_new) == TRUE)] = NA
+
+# check levels again
+extractedtable = data.frame(table(missing2013$SIZE_new))
+
+# 82,689 observations still have NA size (74.8% of missing are still missing)
+# 82,689/1,911,257*100 = 4.33% of TOTAL OBS still missing
+sum(is.na(missing2013$SIZE_new))
+sum(is.na(missing2013$UNIT_new))
+
+82689/110487*100
+82689/1911257*100
+
+```
+
+# Export into csv file
+```{r}
+write.csv(missing2013, file = "extract2013.csv")
+```
+
+
+
+
+
+
+##### 2014 missing sizes dataset
+# Extract sizes from product descriptions using regular expressions
+```{r}
+##### 2014 missing data #####
+
+# explore barcode descriptions
+barcode = data.frame(table(missing2014$BARCODE_DESC))
+# after review, if packet sizes were provided, it would appear at the end of the description
+
+# create new variable called "test" with same data as "BARCODE_DESC" barcode description
+missing2014$test = missing2014$BARCODE_DESC
+
+# substring = extract the last 10 characters (as sizes appear near the end of the string)
+missing2014$test = substr(missing2014$test, (nchar(missing2014$test)-9), nchar(missing2014$test))
+
+# explore patterns of the extracted substrings
+testtable = data.frame(table(missing2014$test))
+
+# create new variable called "SIZE_new" and "UNIT_new" all as NA first
+missing2014$SIZE_new = NA
+missing2014$UNIT_new = NA
+```
+
+# Pattern to extract sizes with units "G", "KG" and "ML"
+```{r}
+# create pattern to detect the units "G", "KG", "ML", "L"
+pattern = "^.+[[:space:]](.+[G|(KG)|(ML)|(L)])([[:space:]].+S)*$"
+
+missing2014$SIZE_new = gsub(pattern, "\\1", missing2014$test)
+
+# look at extracted sizes
+extractedtable = data.frame(table(missing2014$SIZE_new))
+
+# convert extracted into numeric values with consistent units "G"
+## DIGIT G unit and size
+missing2014$UNIT_new[which(grepl("^(\\d+)G$", missing2014$SIZE_new) == TRUE)] = "G"
+
+missing2014$SIZE_new[which(grepl("^(\\d+)G$", missing2014$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2014$SIZE_new[which(grepl("^(\\d+)G$", missing2014$SIZE_new) == TRUE)], split="G"))
+
+# 11.5G
+missing2014$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2014$SIZE_new) == TRUE)] = "G"
+
+missing2014$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2014$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2014$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2014$SIZE_new) == TRUE)], split="G"))
+
+# DIGIT KG * 1000 = g
+missing2014$UNIT_new[which(grepl("^(\\d+)KG$", missing2014$SIZE_new) == TRUE)] = "G"
+
+missing2014$SIZE_new[which(grepl("^(\\d+)KG$", missing2014$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2014$SIZE_new[which(grepl("^(\\d+)KG$", missing2014$SIZE_new) == TRUE)], split="KG"))*1000
+
+# DIGIT.DIGIT KG * 1000 = g
+missing2014$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2014$SIZE_new) == TRUE)] = "G"
+
+missing2014$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2014$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2014$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2014$SIZE_new) == TRUE)], split="KG"))*1000
+
+# ML (assume = g) (includes items with reconstituted ML as its UNIT but description has ML)
+# ignores units ML (CN) and ML(PL) and ML(BD) = all reconstituted ML
+missing2014$UNIT_new[which(grepl("^(\\d+)ML$", missing2014$SIZE_new) == TRUE)] = "ML"
+
+missing2014$SIZE_new[which(grepl("^(\\d+)ML$", missing2014$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2014$SIZE_new[which(grepl("^(\\d+)ML$", missing2014$SIZE_new) == TRUE)], split="ML"))
+
+# L (WATER COOLER 2011 1L ??) * 1000
+# also includes reconstituted ML
+missing2014$UNIT_new[which(grepl("^(\\d+)L$", missing2014$SIZE_new) == TRUE)] = "ML"
+
+missing2014$SIZE_new[which(grepl("^(\\d+)L$", missing2014$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2014$SIZE_new[which(grepl("^(\\d+)L$", missing2014$SIZE_new) == TRUE)], split="L"))*1000
+
+```
+
+
+# Specific items checked for size
+```{r}
+# "TEA 20X40G" Dilmah tea 40 G net
+missing2014$UNIT_new[which(grepl("20X40G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Tea")] = "G"
+
+missing2014$SIZE_new[which(grepl("20X40G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Tea")] = 40
+
+# ORGRAN NAT TOMATO "2X24G" - net 24G
+missing2014$UNIT_new[which(grepl("2X24G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Dry soup mix")] = "G"
+
+missing2014$SIZE_new[which(grepl("2X24G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Dry soup mix")] = 24
+
+# EASIYO YOG BASE REDUCED FAT 3X140G = net 140G
+missing2014$UNIT_new[which(grepl("3X140G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Yoghurt dry mix")] = "G"
+
+missing2014$SIZE_new[which(grepl("3X140G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Yoghurt dry mix")] = 140
+
+# "IC 50X420G" Marcel's Blinis 420 G net (assuming as a 24 pack is 200 G)
+missing2014$UNIT_new[which(grepl("50X420G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2014$SIZE_new[which(grepl("50X420G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Other bread")] = 420
+
+# VAN DYCK PANCAKES G/F ORGANIC 6X50G = 50G per pancake x 6
+missing2014$UNIT_new[which(grepl("6X50G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2014$SIZE_new[which(grepl("6X50G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Other bread")] = 6*50
+
+# "PIES 8X35G" Nature's Harvest Fruit Mince Pies are 35G/pie
+missing2014$UNIT_new[which(grepl("8X35G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Pastries")] = "G"
+
+missing2014$SIZE_new[which(grepl("8X35G", missing2014$SIZE_new) == TRUE & missing2014$Food_Group_Name_3 == "Pastries")] = 8*35
+```
+
+# MAINLAND CRACKER CUTS with CHEESE
+```{r}
+# Assuming products are 120 g based on "BARCODE_DESC", "SIZE" and searching the internet and finding the product on Fonterra's website
+# For these products only using the following rules:
+# - "SIZE" = 120
+# - "Food Group Name 2 or Code" = "Cheese" or 0501
+missing2014$UNIT_new[which(missing2014$SIZE == 120 & missing2014$Food_Group_Name_2 == "Cheese")] = "G"
+
+missing2014$SIZE_new[which(missing2014$SIZE == 120 & missing2014$Food_Group_Name_2 == "Cheese")] = missing2014$SIZE[which(missing2014$SIZE == 120 & missing2014$Food_Group_Name_2 == "Cheese")]
+```
+
+# Pistachios
+```{r}
+# "2011 50G3" for "PISTACHIO 2011 50G3" unable to be classified (1 PACKS) = frequency of 222 items ???
+missing2014$UNIT_new[which(grepl("2011 50G3", missing2014$SIZE_new) == TRUE)] = "G"
+missing2014$SIZE_new[which(grepl("2011 50G3", missing2014$SIZE_new) == TRUE)] = 50
+```
+
+# Aunt betty's
+```{r}
+missing2014$UNIT_new[which(grepl("2X95G", missing2014$SIZE_new) == TRUE)] = "G"
+missing2014$SIZE_new[which(grepl("2X95G", missing2014$SIZE_new) == TRUE)] = 190
+```
+
+# Coca cola
+```{r}
+missing2014$UNIT_new[which(grepl("4X1.5L", missing2014$SIZE_new) == TRUE)] = "ML"
+missing2014$SIZE_new[which(grepl("4X1.5L", missing2014$SIZE_new) == TRUE)] = 6000
+```
+
+# OOB icecream
+```{r}
+missing2014$UNIT_new[which(grepl("FRUIT850ML", missing2014$SIZE_new) == TRUE)] = "ML"
+missing2014$SIZE_new[which(grepl("FRUIT850ML", missing2014$SIZE_new) == TRUE)] = 850
+```
+
+# drinks (BD) and (CN) are have RECONSTITUTED UNITS
+# drinks (GL) and (PL) have ML UNIT
+```{r}
+missing2014$UNIT_new[which(grepl("(GL)", missing2014$SIZE_new) == TRUE & missing2014$UNIT == "ML")] = "ML"
+missing2014$SIZE_new[which(grepl("(GL)", missing2014$SIZE_new) == TRUE & missing2014$UNIT == "ML")] = missing2014$SIZE[which(grepl("(GL)", missing2014$SIZE_new) == TRUE & missing2014$UNIT == "ML")]
+
+missing2014$UNIT_new[which(grepl("(PL)", missing2014$SIZE_new) == TRUE & missing2014$UNIT == "ML")] = "ML"
+missing2014$SIZE_new[which(grepl("(PL)", missing2014$SIZE_new) == TRUE & missing2014$UNIT == "ML")] = missing2014$SIZE[which(grepl("(PL)", missing2014$SIZE_new) == TRUE & missing2014$UNIT == "ML")]
+```
+
+# Checking remaining "extracted_test"
+```{r}
+extractedtable = data.frame(table(missing2014$SIZE_new))
+
+```
+
+# Some reconstituted liquids with (BD) (CN) and (GL) are not correct sizes = NA
+# Checking and identify "extracted_test" that do not provide sizes
+```{r}
+# after review all remaining "extracted_test" levels provide no size therefore = NA
+missing2014$SIZE_new[which(is.na(missing2014$UNIT_new) == TRUE)] = NA
+
+# check levels again
+extractedtable = data.frame(table(missing2014$SIZE_new))
+
+# 83,687 observations still have NA size (73.39% of missing are still missing)
+# 83,669/1,925,668 *100 = 4.35% of TOTAL OBS still missing
+sum(is.na(missing2014$SIZE_new))
+sum(is.na(missing2014$UNIT_new))
+
+83687/114021*100
+83687/1925668*100
+```
+
+# Export into csv file
+```{r}
+write.csv(missing2014, file = "extract2014.csv")
+```
+
+
+
+
+
+
+##### 2015 missing sizes dataset
+# Extract sizes from product descriptions using regular expressions
+```{r}
+##### 2015 missing data #####
+
+# explore barcode descriptions
+barcode = data.frame(table(missing2015$BARCODE_DESC))
+# after review, if packet sizes were provided, it would appear at the end of the description
+
+# create new variable called "test" with same data as "BARCODE_DESC" barcode description
+missing2015$test = missing2015$BARCODE_DESC
+
+# substring = extract the last 10 characters (as sizes appear near the end of the string)
+missing2015$test = substr(missing2015$test, (nchar(missing2015$test)-9), nchar(missing2015$test))
+
+# explore patterns of the extracted substrings
+testtable = data.frame(table(missing2015$test))
+
+# create new variable called "SIZE_new" and "UNIT_new" all as NA first
+missing2015$SIZE_new = NA
+missing2015$UNIT_new = NA
+```
+
+# Pattern to extract sizes with units "G", "KG" and "ML"
+```{r}
+# create pattern to detect the units "G", "KG", "ML", "L"
+pattern = "^.+[[:space:]](.+[G|(KG)|(ML)|(L)])([[:space:]].+S)*$"
+
+missing2015$SIZE_new = gsub(pattern, "\\1", missing2015$test)
+
+# look at extracted sizes
+extractedtable = data.frame(table(missing2015$SIZE_new))
+
+# convert extracted into numeric values with consistent units "G"
+## DIGIT G unit and size
+missing2015$UNIT_new[which(grepl("^(\\d+)G$", missing2015$SIZE_new) == TRUE)] = "G"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)G$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)G$", missing2015$SIZE_new) == TRUE)], split="G"))
+
+# 11.5G
+missing2015$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2015$SIZE_new) == TRUE)] = "G"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2015$SIZE_new) == TRUE)], split="G"))
+
+# DIGIT KG * 1000 = g
+missing2015$UNIT_new[which(grepl("^(\\d+)KG$", missing2015$SIZE_new) == TRUE)] = "G"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)KG$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)KG$", missing2015$SIZE_new) == TRUE)], split="KG"))*1000
+
+# DIGIT.DIGIT KG * 1000 = g
+missing2015$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2015$SIZE_new) == TRUE)] = "G"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2015$SIZE_new) == TRUE)], split="KG"))*1000
+
+# ML (assume = g) (includes items with reconstituted ML as its UNIT but description has ML)
+# ignores units ML (CN) and ML(PL) and ML(BD) = all reconstituted ML
+missing2015$UNIT_new[which(grepl("^(\\d+)ML$", missing2015$SIZE_new) == TRUE)] = "ML"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)ML$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)ML$", missing2015$SIZE_new) == TRUE)], split="ML"))
+
+# L (WATER COOLER 2011 1L ??) * 1000
+# also includes reconstituted ML
+missing2015$UNIT_new[which(grepl("^(\\d+)L$", missing2015$SIZE_new) == TRUE)] = "ML"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)L$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)L$", missing2015$SIZE_new) == TRUE)], split="L"))*1000
+
+```
+
+
+# Specific items checked for size
+```{r}
+# "TEA 20X40G" Dilmah tea 40 G net
+missing2015$UNIT_new[which(grepl("20X40G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Tea")] = "G"
+
+missing2015$SIZE_new[which(grepl("20X40G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Tea")] = 40
+
+# ORGRAN NAT TOMATO "2X24G" - net 24G
+missing2015$UNIT_new[which(grepl("2X24G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Dry soup mix")] = "G"
+
+missing2015$SIZE_new[which(grepl("2X24G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Dry soup mix")] = 24
+
+# PAMS BRISK LEMON LIME 3X70G = 3 x 70G
+missing2015$UNIT_new[which(grepl("3X70G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_2 == "Beverage mixes")] = "G"
+
+missing2015$SIZE_new[which(grepl("3X70G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_2 == "Beverage mixes")] = 3*70
+
+# "ANGE 3X95G" RARO 3 packets x 95G/packet
+missing2015$UNIT_new[which(grepl("3X95G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_2 == "Beverage mixes")] = "G"
+
+missing2015$SIZE_new[which(grepl("3X95G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_2 == "Beverage mixes")] = 3*95
+
+# "IC 50X420G" Marcel's Blinis 420 G net (assuming as a 24 pack is 200 G)
+missing2015$UNIT_new[which(grepl("50X420G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2015$SIZE_new[which(grepl("50X420G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Other bread")] = 420
+
+# VAN DYCK PANCAKES G/F ORGANIC 6X50G = 50G per pancake x 6
+missing2015$UNIT_new[which(grepl("6X50G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2015$SIZE_new[which(grepl("6X50G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Other bread")] = 6*50
+
+# "PIES 8X35G" Nature's Harvest Fruit Mince Pies are 35G/pie
+missing2015$UNIT_new[which(grepl("8X35G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Pastries")] = "G"
+
+missing2015$SIZE_new[which(grepl("8X35G", missing2015$SIZE_new) == TRUE & missing2015$Food_Group_Name_3 == "Pastries")] = 8*35
+
+```
+
+# MAINLAND CRACKER CUTS with CHEESE
+```{r}
+# Assuming products are 120 g based on "BARCODE_DESC", "SIZE" and searching the internet and finding the product on Fonterra's website
+# For these products only using the following rules:
+# - "SIZE" = 120
+# - "Food Group Name 2 or Code" = "Cheese" or 0501
+missing2015$UNIT_new[which(missing2015$SIZE == 120 & missing2015$Food_Group_Name_2 == "Cheese")] = "G"
+
+missing2015$SIZE_new[which(missing2015$SIZE == 120 & missing2015$Food_Group_Name_2 == "Cheese")] = missing2015$SIZE[which(missing2015$SIZE == 120 & missing2015$Food_Group_Name_2 == "Cheese")]
+```
+
+# Pistachios
+```{r}
+# "2011 50G3" for "PISTACHIO 2011 50G3" unable to be classified (1 PACKS)
+missing2015$UNIT_new[which(grepl("2011 50G3", missing2015$SIZE_new) == TRUE)] = "G"
+missing2015$SIZE_new[which(grepl("2011 50G3", missing2015$SIZE_new) == TRUE)] = 50
+```
+
+# digit.digit L
+```{r}
+# DIGIT.DIGIT L * 1000 = ML
+missing2015$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)L$", missing2015$SIZE_new) == TRUE)] = "ML"
+
+missing2015$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)L$", missing2015$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2015$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)L$", missing2015$SIZE_new) == TRUE)], split="L"))*1000
+```
+
+# drinks (BD), (CN), (GL), (PL)
+```{r}
+# (BD)
+missing2015$UNIT_new[which(grepl("(BD)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("(BD)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = missing2015$SIZE[which(grepl("(BD)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")]
+
+missing2015$UNIT_new[which(grepl("(BD)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = "ML"
+missing2015$SIZE_new[which(grepl("(BD)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = missing2015$SIZE[which(grepl("(BD)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")]
+
+#(CN)
+missing2015$UNIT_new[which(grepl("(CN)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = "ML"
+missing2015$SIZE_new[which(grepl("(CN)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = missing2015$SIZE[which(grepl("(CN)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")]
+
+# (GL)
+missing2015$UNIT_new[which(grepl("(GL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = "ML"
+missing2015$SIZE_new[which(grepl("(GL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = missing2015$SIZE[which(grepl("(GL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")]
+
+# (PL)
+missing2015$UNIT_new[which(grepl("(PL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("(PL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = missing2015$SIZE[which(grepl("(PL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")]
+
+missing2015$UNIT_new[which(grepl("(PL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = "ML"
+missing2015$SIZE_new[which(grepl("(PL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = missing2015$SIZE[which(grepl("(PL)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")]
+```
+
+# (C) and (CT) and (HH) bread and (ML) spicy fruit
+```{r}
+missing2015$UNIT_new[which(grepl("(C)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("(C)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = missing2015$SIZE[which(grepl("(C)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")]
+
+missing2015$UNIT_new[which(grepl("(HH)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("(HH)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = missing2015$SIZE[which(grepl("(HH)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")]
+
+missing2015$UNIT_new[which(grepl("(ML)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("(ML)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = missing2015$SIZE[which(grepl("(ML)", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")]
+```
+
+# Other items
+```{r}
+missing2015$UNIT_new[which(grepl("12X100G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("12X100G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 1200
+
+missing2015$UNIT_new[which(grepl("12X50G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("12X50G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 600
+
+missing2015$UNIT_new[which(grepl("14X14G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("14X14G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 196
+
+missing2015$UNIT_new[which(grepl("14X5G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("14X5G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 70
+
+missing2015$UNIT_new[which(grepl("15X25G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X25G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 375
+
+missing2015$UNIT_new[which(grepl("15X28G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X28G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 420
+
+missing2015$UNIT_new[which(grepl("15X36G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X36G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 540
+
+missing2015$UNIT_new[which(grepl("15X37G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X37G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 555
+
+missing2015$UNIT_new[which(grepl("15X38G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X38G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 570
+
+missing2015$UNIT_new[which(grepl("15X39G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X39G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 630
+
+missing2015$UNIT_new[which(grepl("15X42G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X42G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 630
+
+missing2015$UNIT_new[which(grepl("15X44G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X44G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 660
+
+missing2015$UNIT_new[which(grepl("15X46G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X46G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 690
+
+missing2015$UNIT_new[which(grepl("15X47G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("15X47G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 540
+
+missing2015$UNIT_new[which(grepl("20X20G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("20X20G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 400
+
+missing2015$UNIT_new[which(grepl("2X120G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("2X120G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 240
+
+missing2015$UNIT_new[which(grepl("2X95G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("2X95G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 190
+
+missing2015$UNIT_new[which(grepl("3X75G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("3X75G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 225
+
+missing2015$UNIT_new[which(grepl("3X86G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("3X86G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 258
+
+missing2015$UNIT_new[which(grepl("4X1.5L", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = "ML"
+missing2015$SIZE_new[which(grepl("4X1.5L", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = 6000
+
+missing2015$UNIT_new[which(grepl("4X150G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("4X150G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 600
+
+missing2015$UNIT_new[which(grepl("4X17G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("4X17G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 68
+
+missing2015$UNIT_new[which(grepl("4X330ML", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = "ML"
+missing2015$SIZE_new[which(grepl("4X330ML", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "ML")] = 1320
+
+missing2015$UNIT_new[which(grepl("4X90G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("4X90G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 360
+
+missing2015$UNIT_new[which(grepl("5X120G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("5X120G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 600
+
+missing2015$UNIT_new[which(grepl("5X70G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("5X70G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 350
+
+missing2015$UNIT_new[which(grepl("5X75G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("5X75G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 375
+
+missing2015$UNIT_new[which(grepl("5X90G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("5X90G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 450
+
+missing2015$UNIT_new[which(grepl("6X100G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("6X100G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 600
+
+missing2015$UNIT_new[which(grepl("6X15G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("6X15G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 90
+
+missing2015$UNIT_new[which(grepl("6X30G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("6X30G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 180
+
+missing2015$UNIT_new[which(grepl("6X42G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("6X42G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 252
+
+missing2015$UNIT_new[which(grepl("AK 14GX36S", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("AK 14GX36S", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 504
+
+missing2015$UNIT_new[which(grepl("RPOT15X23G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = "G"
+missing2015$SIZE_new[which(grepl("RPOT15X23G", missing2015$SIZE_new) == TRUE & missing2015$UNIT == "G")] = 345
+```
+
+# Checking remaining "extracted_test"
+```{r}
+extractedtable = data.frame(table(missing2015$SIZE_new))
+
+```
+
+# Some reconstituted liquids with (BD) (CN) and (GL) are not correct sizes = NA
+# Checking and identify "extracted_test" that do not provide sizes
+```{r}
+# after review all remaining "extracted_test" levels provide no size therefore = NA
+missing2015$SIZE_new[which(is.na(missing2015$UNIT_new) == TRUE)] = NA
+
+# check levels again
+extractedtable = data.frame(table(missing2015$SIZE_new))
+
+# 103,482 observations still have NA size (46.3% of missing are still missing)
+# 103,482/2,063,045 *100 = 5.02% of TOTAL OBS still missing
+sum(is.na(missing2015$SIZE_new))
+sum(is.na(missing2015$UNIT_new))
+
+103482/223480*100
+103482/2063045*100
+```
+
+# Export into csv file
+```{r}
+write.csv(missing2015, file = "extract2015.csv")
+```
+
+
+
+
+
+
+##### 2016 missing sizes dataset
+# Extract sizes from product descriptions using regular expressions
+```{r}
+##### 2016 missing data #####
+
+# explore barcode descriptions
+barcode = data.frame(table(missing2016$BARCODE_DESC))
+# after review, if packet sizes were provided, it would appear at the end of the description
+
+# create new variable called "test" with same data as "BARCODE_DESC" barcode description
+missing2016$test = missing2016$BARCODE_DESC
+
+# substring = extract the last 10 characters (as sizes appear near the end of the string)
+missing2016$test = substr(missing2016$test, (nchar(missing2016$test)-9), nchar(missing2016$test))
+
+# explore patterns of the extracted substrings
+testtable = data.frame(table(missing2016$test))
+
+# create new variable called "SIZE_new" and "UNIT_new" all as NA first
+missing2016$SIZE_new = NA
+missing2016$UNIT_new = NA
+```
+
+# Pattern to extract sizes with units "G", "KG" and "ML"
+```{r}
+# create pattern to detect the units "G", "KG", "ML", "L"
+pattern = "^.+[[:space:]](.+[G|(KG)|(ML)|(L)])([[:space:]].+S)*$"
+
+missing2016$SIZE_new = gsub(pattern, "\\1", missing2016$test)
+
+# look at extracted sizes
+extractedtable = data.frame(table(missing2016$SIZE_new))
+
+# convert extracted into numeric values with consistent units "G"
+## DIGIT G unit and size
+missing2016$UNIT_new[which(grepl("^(\\d+)G$", missing2016$SIZE_new) == TRUE)] = "G"
+
+missing2016$SIZE_new[which(grepl("^(\\d+)G$", missing2016$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2016$SIZE_new[which(grepl("^(\\d+)G$", missing2016$SIZE_new) == TRUE)], split="G"))
+
+# 11.5G
+missing2016$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2016$SIZE_new) == TRUE)] = "G"
+
+missing2016$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2016$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2016$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)G$", missing2016$SIZE_new) == TRUE)], split="G"))
+
+# DIGIT KG * 1000 = g
+missing2016$UNIT_new[which(grepl("^(\\d+)KG$", missing2016$SIZE_new) == TRUE)] = "G"
+
+missing2016$SIZE_new[which(grepl("^(\\d+)KG$", missing2016$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2016$SIZE_new[which(grepl("^(\\d+)KG$", missing2016$SIZE_new) == TRUE)], split="KG"))*1000
+
+# DIGIT.DIGIT KG * 1000 = g
+missing2016$UNIT_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2016$SIZE_new) == TRUE)] = "G"
+
+missing2016$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2016$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2016$SIZE_new[which(grepl("^(\\d+)(\\.)(\\d+)KG$", missing2016$SIZE_new) == TRUE)], split="KG"))*1000
+
+# ML (assume = g) (includes items with reconstituted ML as its UNIT but description has ML)
+# ignores units ML (CN) and ML(PL) and ML(BD) = all reconstituted ML
+missing2016$UNIT_new[which(grepl("^(\\d+)ML$", missing2016$SIZE_new) == TRUE)] = "ML"
+
+missing2016$SIZE_new[which(grepl("^(\\d+)ML$", missing2016$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2016$SIZE_new[which(grepl("^(\\d+)ML$", missing2016$SIZE_new) == TRUE)], split="ML"))
+
+# L (WATER COOLER 2011 1L ??) * 1000
+# also includes reconstituted ML
+missing2016$UNIT_new[which(grepl("^(\\d+)L$", missing2016$SIZE_new) == TRUE)] = "ML"
+
+missing2016$SIZE_new[which(grepl("^(\\d+)L$", missing2016$SIZE_new) == TRUE)] = as.numeric(strsplit(missing2016$SIZE_new[which(grepl("^(\\d+)L$", missing2016$SIZE_new) == TRUE)], split="L"))*1000
+
+```
+
+
+# Specific items checked for size
+```{r}
+# AVIATEUR FILLED SPECCULAAS 240GM = 250 G
+missing2016$UNIT_new[which(grepl("240GM", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_3 == "Cakes")] = "G"
+
+missing2016$SIZE_new[which(grepl("240GM", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_3 == "Cakes")] = 250
+
+# ZIPFER BEER CANS 24X500ML = 24 cans x 500 ML
+missing2016$UNIT_new[which(grepl("24X500ML", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_1 == "Alcohol")] = "ML"
+
+missing2016$SIZE_new[which(grepl("24X500ML", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_1 == "Alcohol")] = 24*500
+
+# PAMS BRISK LEMON LIME 3X70G = 3 x 70G
+missing2016$UNIT_new[which(grepl("3X70G", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_2 == "Beverage mixes")] = "G"
+
+missing2016$SIZE_new[which(grepl("3X70G", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_2 == "Beverage mixes")] = 3*70
+
+# "IC 50X420G" Marcel's Blinis 420 G net (assuming as a 24 pack is 200 G)
+missing2016$UNIT_new[which(grepl("50X420G", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_3 == "Other bread")] = "G"
+
+missing2016$SIZE_new[which(grepl("50X420G", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_3 == "Other bread")] = 420
+
+# "PIES 8X35G" Nature's Harvest Fruit Mince Pies are 35G/pie
+missing2016$UNIT_new[which(grepl("8X35G", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_3 == "Pastries")] = "G"
+
+missing2016$SIZE_new[which(grepl("8X35G", missing2016$SIZE_new) == TRUE & missing2016$Food_Group_Name_3 == "Pastries")] = 8*35
+```
+
+# MAINLAND CRACKER CUTS with CHEESE
+```{r}
+# Assuming products are 120 g based on "BARCODE_DESC", "SIZE" and searching the internet and finding the product on Fonterra's website
+# For these products only using the following rules:
+# - "SIZE" = 120
+# - "Food Group Name 2 or Code" = "Cheese" or 0501
+missing2016$UNIT_new[which(missing2016$SIZE == 120 & missing2016$Food_Group_Name_2 == "Cheese")] = "G"
+
+missing2016$SIZE_new[which(missing2016$SIZE == 120 & missing2016$Food_Group_Name_2 == "Cheese")] = missing2016$SIZE[which(missing2016$SIZE == 120 & missing2016$Food_Group_Name_2 == "Cheese")]
+```
+
+# Pistachios
+```{r}
+# "2011 50G3" for "PISTACHIO 2011 50G3" unable to be classified (1 PACKS) = frequency of 222 items ???
+missing2016$UNIT_new[which(grepl("2011 50G3", missing2016$SIZE_new) == TRUE)] = "G"
+missing2016$SIZE_new[which(grepl("2011 50G3", missing2016$SIZE_new) == TRUE)] = 50
+```
+
+# drinks (BD), (CN) all RECONSTITUTED UNITS
+# drinks (GL), (HH), (LG), (PL) with UNIT in (ML or G)
+```{r}
+missing2016$UNIT_new[which(grepl("(GL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = "ML"
+missing2016$SIZE_new[which(grepl("(GL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = missing2016$SIZE[which(grepl("(GL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")]
+
+missing2016$UNIT_new[which(grepl("(HH)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("(HH)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = missing2016$SIZE[which(grepl("(HH)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")]
+
+missing2016$UNIT_new[which(grepl("(LG)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("(LG)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = missing2016$SIZE[which(grepl("(LG)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")]
+
+missing2016$UNIT_new[which(grepl("(PL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("(PL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = missing2016$SIZE[which(grepl("(PL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")]
+
+missing2016$UNIT_new[which(grepl("(PL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = "ML"
+missing2016$SIZE_new[which(grepl("(PL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = missing2016$SIZE[which(grepl("(PL)", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")]
+```
+# Other 
+```{r}
+missing2016$UNIT_new[which(grepl("10X12G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("10X12G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 120
+
+missing2016$UNIT_new[which(grepl("12X50G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("12X50G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 600
+
+missing2016$UNIT_new[which(grepl("12X74G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("12X74G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 888
+
+missing2016$UNIT_new[which(grepl("2X100G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = "G"
+missing2016$SIZE_new[which(grepl("2X100G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = 200
+
+missing2016$UNIT_new[which(grepl("30X12.5G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("30X12.5G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 375
+
+missing2016$UNIT_new[which(grepl("3X25G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("3X25G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 75
+
+missing2016$UNIT_new[which(grepl("4X100ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "ML"
+missing2016$SIZE_new[which(grepl("4X100ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 400
+
+missing2016$UNIT_new[which(grepl("5X25G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("5X25G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 125
+
+missing2016$UNIT_new[which(grepl("5X85G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("5X85G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 425
+
+missing2016$UNIT_new[which(grepl("6X236ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "ML"
+missing2016$SIZE_new[which(grepl("6X236ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 1416
+
+missing2016$UNIT_new[which(grepl("6X250ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "ML"
+missing2016$SIZE_new[which(grepl("6X250ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 1500
+
+missing2016$UNIT_new[which(grepl("6X375ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = "ML"
+missing2016$SIZE_new[which(grepl("6X375ML", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "ML")] = 2250
+
+missing2016$UNIT_new[which(grepl("700GM", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("700GM", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 700
+
+missing2016$UNIT_new[which(grepl("8X28G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = "G"
+missing2016$SIZE_new[which(grepl("8X28G", missing2016$SIZE_new) == TRUE & missing2016$UNIT == "G")] = 224
+
+```
+
+# Checking remaining "extracted_test"
+```{r}
+extractedtable = data.frame(table(missing2016$SIZE_new))
+
+```
+
+# Reconstituted liquids with (BD) (CN) and (GL) are not correct sizes = NA
+# Checking and identify "extracted_test" that do not provide sizes
+```{r}
+extractedtable = data.frame(table(missing2016$SIZE_new))
+
+# after review all remaining "extracted_test" levels provide no size therefore = NA
+missing2016$SIZE_new[which(grepl("^(\\d+)$", missing2016$SIZE_new) == FALSE & is.na(missing2016$UNIT_new))] = NA
+
+# check levels again
+extractedtable = data.frame(table(missing2016$SIZE_new))
+
+# 90,655 observations still have NA size (68.9% of missing are still missing)
+# 90,655 /2069206 *100 = 4.38% of TOTAL OBS still missing
+sum(is.na(missing2016$SIZE_new))
+sum(is.na(missing2016$UNIT_new))
+
+90655/131473*100
+90655/2069206*100
+```
+
+# Export into csv file
+```{r}
+write.csv(missing2016, file = "extract2016.csv")
+```
+
+################################ 
+
